@@ -1,4 +1,3 @@
-
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
@@ -9,13 +8,15 @@ import smtplib
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 
-app = Flask(__name__)
+app = Flask(__name__ )
 CORS(app)
 
+# إعداد قاعدة البيانات
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
+# نموذج المستخدم
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     full_name = db.Column(db.String(100))
@@ -24,6 +25,7 @@ class User(db.Model):
     birthdate = db.Column(db.String(20))
     profile_image_url = db.Column(db.String(500))
 
+# نموذج كود إعادة التعيين
 class ResetCode(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(100), nullable=False)
@@ -33,6 +35,7 @@ class ResetCode(db.Model):
 with app.app_context():
     db.create_all()
 
+# إرسال كود إلى الإيميل
 @app.route('/send-reset-code', methods=['POST'])
 def send_reset_code():
     data = request.get_json()
@@ -45,14 +48,16 @@ def send_reset_code():
     code = str(random.randint(100000, 999999))
     expiry = datetime.utcnow() + timedelta(minutes=10)
 
+    # حذف أي أكواد قديمة
     ResetCode.query.filter_by(email=email).delete()
 
     reset_code = ResetCode(email=email, code=code, expiry=expiry)
     db.session.add(reset_code)
     db.session.commit()
 
+    # بيانات البريد
     sender_email = "projectteam1235@gmail.com"
-    sender_password = os.getenv("EMAIL_PASSWORD")
+    sender_password = os.getenv("EMAIL_PASSWORD")  # يتم أخذه من متغير بيئي في Railway
     subject = "Your Password Reset Code"
     body = f"Your verification code is: {code}"
 
@@ -72,6 +77,7 @@ def send_reset_code():
 
     return jsonify({'message': 'Reset code sent to email'}), 200
 
+# التحقق من الكود
 @app.route('/verify-reset-code', methods=['POST'])
 def verify_reset_code():
     data = request.get_json()
@@ -79,15 +85,14 @@ def verify_reset_code():
     code = data.get('code')
 
     record = ResetCode.query.filter_by(email=email, code=code).first()
-
     if not record:
         return jsonify({'message': 'Invalid code'}), 400
-
     if datetime.utcnow() > record.expiry:
         return jsonify({'message': 'Code expired'}), 400
 
     return jsonify({'message': 'Code verified'}), 200
 
+# إعادة تعيين كلمة المرور
 @app.route('/reset-password', methods=['POST'])
 def reset_password():
     data = request.get_json()
@@ -98,7 +103,6 @@ def reset_password():
     record = ResetCode.query.filter_by(email=email, code=code).first()
     if not record:
         return jsonify({'message': 'Invalid code'}), 400
-
     if datetime.utcnow() > record.expiry:
         return jsonify({'message': 'Code expired'}), 400
 
@@ -108,12 +112,13 @@ def reset_password():
 
     hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     user.password = hashed_password
-    db.session.commit()
 
+    db.session.commit()
     db.session.delete(record)
     db.session.commit()
 
     return jsonify({'message': 'Password has been reset successfully'}), 200
 
+# تشغيل الخادم
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=5000)
